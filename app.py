@@ -4,8 +4,10 @@ import sys
 import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import QThread, Qt, Signal
-from PySide6.QtGui import QDragEnterEvent, QDropEvent
+from PySide6.QtCore import QMarginsF, QThread, Qt, Signal
+from PySide6.QtGui import (QDragEnterEvent, QDropEvent, QFont, QPageLayout,
+    QPageSize, QTextDocument, QTextOption)
+from PySide6.QtPrintSupport import QPrinter, QPrintPreviewDialog
 from PySide6.QtWidgets import (QApplication, QComboBox, QFileDialog, QHBoxLayout,
     QLabel, QMainWindow, QMessageBox, QProgressBar, QPushButton, QPlainTextEdit,
     QVBoxLayout, QWidget)
@@ -148,6 +150,11 @@ class MainWindow(QMainWindow):
             button = QPushButton(f"{kind.upper()}を保存"); button.setEnabled(False)
             button.clicked.connect(lambda _checked=False, value=kind: self.save_result(value))
             self.save_buttons.append(button); save_row.addWidget(button)
+        self.print_button = QPushButton("A4で印刷")
+        self.print_button.setEnabled(False)
+        self.print_button.clicked.connect(self.print_result)
+        self.output.textChanged.connect(self.update_print_button)
+        save_row.addWidget(self.print_button)
         layout.addLayout(save_row); self.setCentralWidget(root); self.refresh_environment()
 
     def refresh_environment(self) -> None:
@@ -204,6 +211,40 @@ class MainWindow(QMainWindow):
         if filename:
             content = {"txt": as_text, "srt": as_srt, "vtt": as_vtt}[kind](self.segments)
             Path(filename).write_text(content, encoding="utf-8-sig" if kind == "txt" else "utf-8")
+
+    def update_print_button(self) -> None:
+        self.print_button.setEnabled(bool(self.output.toPlainText().strip()))
+
+    def print_result(self) -> None:
+        text = self.output.toPlainText()
+        if not text.strip():
+            return
+        printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+        printer.setPageLayout(QPageLayout(
+            QPageSize(QPageSize.PageSizeId.A4), QPageLayout.Orientation.Portrait,
+            QMarginsF(20, 20, 20, 20), QPageLayout.Unit.Millimeter,
+        ))
+        printer.setDocName("文字起こし")
+        # Keep a separate document so printing does not alter the editor layout.
+        document = QTextDocument()
+        font = QFont(self.output.font())
+        font.setPointSizeF(12)
+        document.setDefaultFont(font)
+        option = document.defaultTextOption()
+        option.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+        document.setDefaultTextOption(option)
+        document.setDocumentMargin(4)
+        document.setPlainText(text)
+        preview = QPrintPreviewDialog(printer, self)
+        preview.setWindowTitle("A4印刷プレビュー")
+        preview.resize(900, 750)
+        def render(target: QPrinter) -> None:
+            document.documentLayout().setPaintDevice(target)
+            document.setPageSize(target.pageRect(QPrinter.Unit.DevicePixel).size())
+            document.print_(target)
+
+        preview.paintRequested.connect(render)
+        preview.exec()
 
     def closeEvent(self, event) -> None:
         if self.worker and self.worker.isRunning():
