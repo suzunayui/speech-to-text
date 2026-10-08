@@ -13,7 +13,7 @@ function Find-Python {
     throw "Python 3 was not found. Install Python 3.11 or 3.12 from https://www.python.org/downloads/"
 }
 
-$PythonCommand = Find-Python
+$PythonCommand = @(Find-Python)
 $VenvPython = Join-Path $ProjectRoot ".venv\Scripts\python.exe"
 $RequirementsHashFile = Join-Path $ProjectRoot ".venv\requirements.sha256"
 $CurrentHash = (Get-FileHash -Algorithm SHA256 (Join-Path $ProjectRoot "requirements.txt")).Hash
